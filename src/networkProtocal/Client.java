@@ -11,16 +11,15 @@ import java.util.Scanner;
 
 public class Client {
 	private static Scanner cli = new Scanner(System.in);
-	public static Socket socket;
+	private static Socket socket;
 	private static final int PORT = 5001;
 	private static final String HOSTNAME = "dsp2014.ece.mcgill.ca";
-	public final static int TOTAL_HEADER_SIZE = 12;
-	public static final int HEADER_SIZE = 4;
+	private final static int TOTAL_HEADER_SIZE = 12;
+	private static final int HEADER_SIZE = 4;
 	static Thread autoQuery;
-	public static String username;
-	public static String password;
+	static volatile boolean threadFlag = true;
 	
-	public enum MessageType {
+	private enum MessageType {
 		EXIT(0),
 		BADLY_FORMATTED_MESSAGE(1),
 		ECHO(2),
@@ -54,7 +53,7 @@ public class Client {
 			
 			initialMenu();
 			
-		} catch(IOException e) {
+		} catch(IOException | InterruptedException e) {
 			e.printStackTrace();
 		}
 	}
@@ -62,14 +61,15 @@ public class Client {
 	/**
 	 * gives the user the initial options of either logging in, creating a new user or exiting
 	 * @throws IOException
+	 * @throws InterruptedException 
 	 */
-	private static void initialMenu() throws IOException{
+	private static void initialMenu() throws IOException, InterruptedException{
 		int userSelection;
-		System.out.println("Please select one of the following options:\n" +
+		System.out.println("\n\nPlease select one of the following options:\n" +
 				"\t\t1 - Login\n" +
 				"\t\t2 - Create Account\n" +
 				"\t\t3 - exit");
-		userSelection = cli.nextInt();
+		userSelection = Integer.parseInt(cli.next());
 		
 		if(userSelection == 1){
 			login();
@@ -87,17 +87,18 @@ public class Client {
 	/**
 	 * Disconnects the connection from the server
 	 * @throws IOException
+	 * @throws InterruptedException 
 	 */
-	private static void exit() throws IOException {
-//		int messageType = MessageType.EXIT.getMessageType();
-//		int subMessage = 0;
-//		String message = " ";
-//		
-//		ArrayList<byte[]> request, response;
-//		
-//		request = convertToArrayList(messageType,subMessage,message);
-//		response = sendRequest(request.get(0), request.get(1), request.get(2), request.get(3));
-//		System.out.println(byteArrayToString(response.get(3)));
+	private static void exit() throws IOException, InterruptedException {
+		int messageType = MessageType.EXIT.getMessageType();
+		int subMessage = 0;
+		String message = " ";
+		
+		ArrayList<byte[]> request, response;
+		
+		request = convertToArrayList(messageType,subMessage,message);
+		response = sendRequest(request.get(0), request.get(1), request.get(2), request.get(3));
+		System.out.println(byteArrayToString(response.get(3)));
 		
 		System.out.println("Exiting, goodbye!");
 		
@@ -106,14 +107,30 @@ public class Client {
 		System.exit(0);
 	}
 
-	
-	private static void createUser() throws IOException {
-		System.out.print("You have chosen to create a new user.\n" +
-				"Please enter the credentials you wish to use.\n" +
+	/**
+	 * Creates a new user 
+	 * @throws IOException
+	 * @throws InterruptedException 
+	 */
+	private static void createUser() throws IOException, InterruptedException {
+		String username = "";
+		String password = "";
+		
+		System.out.print("\n\nYou have chosen to create a new user.\n" +
+				"Please enter the credentials you wish to use. Keep to single word with alphanumeric characters only.\n" +
 				"Username:");
+		
 		if(cli.hasNext()){
 			username = cli.next();
 		}
+		
+		//make sure username doesn't have a comma
+		while(username.contains(",")){
+			System.out.print("Username CANNOT contain a comma!\n" +
+					"Enter a new username:");
+			username = cli.next();
+		}
+		
 		System.out.print("Password:");
 		if (cli.hasNext()){
 			password = cli.next();
@@ -121,19 +138,28 @@ public class Client {
 		
 		//Send proper request to the server
 		int messageType = MessageType.CREATE_USER.getMessageType();
-		int subMessage = 0;
+		int subMessage = 10;
 		String message = username + "," + password;
 		
 		ArrayList<byte[]> request = convertToArrayList(messageType,subMessage,message);
+		ArrayList<byte[]> response = new ArrayList<byte[]>();
 		
-		ArrayList<byte[]> response = sendRequest(request.get(0), request.get(1), request.get(2), request.get(3));
+		do {
+			response = sendRequest(request.get(0), request.get(1), request.get(2), request.get(3));
+			
+			messageType = byteArrayToInt(response.get(0));
+			subMessage = byteArrayToInt(response.get(1));
+		}while(messageType != MessageType.CREATE_USER.getMessageType() || (subMessage != 0 && subMessage != 1 && subMessage != 2 && subMessage != 3));
 		
 		//Based on server response offer correct corresponding options to user
-		subMessage = byteArrayToInt(response.get(1));
 		System.out.println(byteArrayToString(response.get(3)));
 		
-		if(subMessage == 2){
+		if(subMessage == 0){
+			initialMenu();
+		}
+		else if(subMessage == 2){
 			//go to logged in menu
+			alreadyLoggedIn();
 		}else {
 			//go back to the initial menu
 			initialMenu();
@@ -143,10 +169,14 @@ public class Client {
 	/**
 	 * Attempts to log the user into the server
 	 * @throws IOException
+	 * @throws InterruptedException 
 	 */
-	private static void login() throws IOException{
+	private static void login() throws IOException, InterruptedException{
 		//Ask for user input for username and password
-		System.out.print("Please enter your credentials.\nUsername:");
+		String username = "";
+		String password = "";
+		
+		System.out.print("\nPlease enter your credentials.\nUsername:");
 		if(cli.hasNext()){
 			username = cli.next();
 		}
@@ -161,22 +191,215 @@ public class Client {
 		String message = username + "," + password;
 		
 		ArrayList<byte[]> request = convertToArrayList(messageType,subMessage,message);
+		ArrayList<byte[]> response = new ArrayList<byte[]>();
 		
-		ArrayList<byte[]> response = sendRequest(request.get(0), request.get(1), request.get(2), request.get(3));
+		do{
+			response= sendRequest(request.get(0), request.get(1), request.get(2), request.get(3));
 		
-		//Based on server response offer correct corresponding options to user
-		subMessage = byteArrayToInt(response.get(1));
+			//Based on server response offer correct corresponding options to user
+			messageType = byteArrayToInt(response.get(0));
+			subMessage = byteArrayToInt(response.get(1));
+		}while(messageType != MessageType.LOGIN.getMessageType() || (subMessage != 0 && subMessage != 1 && subMessage != 2 && subMessage != 3));
+		
 		System.out.println(byteArrayToString(response.get(3)));
 		
-		if (subMessage == 0 || subMessage == 1){
-			
+		//need to start thread before going to alreadyLoggedIn()
+		if (subMessage == 0){
+			createStore();
+			alreadyLoggedIn();
+		}
+		else if (subMessage == 1){
+			alreadyLoggedIn();
 		}
 		else if(subMessage == 2 || subMessage == 3){
-			login();
+			initialMenu();
 		}
-		
 	}
 	
+	/**
+	 * Creates data store for user
+	 * @throws IOException
+	 * @throws InterruptedException 
+	 */
+	public static void createStore() throws IOException, InterruptedException{
+		int messageType = MessageType.CREATE_STORE.getMessageType();
+		int subMessage = 0;
+		String message = " ";
+		
+		ArrayList<byte[]> request = convertToArrayList(messageType,subMessage,message);
+		
+		ArrayList<byte[]> response = new ArrayList<byte[]>();
+		
+		do{
+			response = sendRequest(request.get(0), request.get(1), request.get(2), request.get(3));
+			subMessage = byteArrayToInt(response.get(1));
+			messageType = byteArrayToInt(response.get(0));
+		}while (messageType != MessageType.CREATE_STORE.getMessageType() || (subMessage != 0 && subMessage != 1 && subMessage != 2 ));
+		
+		//Based on server response offer correct corresponding options to user
+		
+		if(subMessage == 0){
+			System.out.println(byteArrayToString(response.get(3)));
+		}
+		else if (subMessage ==2){
+			initialMenu();
+		}
+	}
+	
+	/**
+	 * Main menu once user is already logged in
+	 * @throws IOException
+	 * @throws InterruptedException 
+	 */
+	public static void alreadyLoggedIn() throws IOException, InterruptedException{
+		Thread.sleep(1000);
+		System.out.println("\n\nPlease select one of the following options:\n" +
+				"\t\t1 - Send message to another user\n" +
+				"\t\t2 - Check for new messages\n" +
+				"\t\t3 - Delete your account\n" +
+				"\t\t4 - Logoff\n" +
+				"\t\t5 - Exit");
+		int userSelection = 0;
+		if(cli.hasNext()) {
+			userSelection = Integer.parseInt(cli.next().trim());
+		}
+		
+		switch(userSelection){
+			case 1:
+				sendMessage();
+				break;
+			case 2:
+				queryMessages();
+				alreadyLoggedIn();
+				break;
+			case 3:
+				deleteAccount();
+				Thread.sleep(2000);
+				initialMenu();
+				break;
+			case 4:
+				logoff();
+				initialMenu();
+				break;
+			case 5:
+				exit();
+				break;
+			default:
+				System.out.println("Invalid choice.");
+				alreadyLoggedIn();
+				break;
+		}
+	}
+	
+	/**
+	 * Send a message to another user
+	 * @throws IOException
+	 * @throws InterruptedException 
+	 */
+	private static void sendMessage() throws IOException, InterruptedException {
+		int messageType = MessageType.SEND_MESSAGE.getMessageType();
+		int subMessage = 0;
+		String username = "";
+		String message = "";
+		String data;
+		
+		//ask user to enter username to send message to
+		System.out.print("\nPlease enter the username you wish to send a message to: ");
+		if(cli.hasNext()){
+			username = cli.next().trim();
+		}
+		cli.nextLine();
+		//ask user to input message to send
+		System.out.print("Please enter the message: ");
+		
+		message = cli.nextLine().toString();
+		
+		
+		data = username + "," + message;
+		System.out.println(data);
+		
+		ArrayList<byte[]> request = convertToArrayList(messageType,subMessage,data);
+		ArrayList<byte[]> response = new ArrayList<byte[]>();
+		
+		do{
+			response = sendRequest(request.get(0), request.get(1), request.get(2), request.get(3));
+			
+			messageType = byteArrayToInt(response.get(0));
+			subMessage = byteArrayToInt(response.get(1));
+		}while(messageType != MessageType.SEND_MESSAGE.getMessageType());
+		
+		System.out.println(byteArrayToString(response.get(3)));
+		Thread.sleep(2000);
+		alreadyLoggedIn();
+	}
+	
+	/**
+	 * Deletes the user from the system and logs them out
+	 * @throws IOException
+	 * @throws InterruptedException 
+	 */
+	private static void deleteAccount() throws IOException, InterruptedException{
+		int messageType = MessageType.DELETE_USER.getMessageType();
+		int subMessage = 0;
+		String message = " ";
+		
+		ArrayList<byte[]> request = convertToArrayList(messageType,subMessage,message);
+		ArrayList<byte[]> response = new ArrayList<byte[]>();
+		
+		do{
+			response = sendRequest(request.get(0), request.get(1), request.get(2), request.get(3));
+			
+			messageType = byteArrayToInt(response.get(0));
+			subMessage = byteArrayToInt(response.get(1));
+		}while (messageType != MessageType.DELETE_USER.getMessageType() || (subMessage != 0 && subMessage != 1));
+		
+		//Based on server response offer correct corresponding options to user
+		System.out.println(byteArrayToString(response.get(3)));
+	}
+	
+	/**
+	 * Logs the user out of the system
+	 * @throws IOException
+	 * @throws InterruptedException 
+	 */
+	private static void logoff() throws IOException, InterruptedException{
+		int messageType = MessageType.LOGOFF.getMessageType();
+		int subMessage = 0;
+		String message = " ";
+		
+		ArrayList<byte[]> request = convertToArrayList(messageType,subMessage,message);
+		ArrayList<byte[]> response = new ArrayList<byte[]>();
+		do {
+			response = sendRequest(request.get(0), request.get(1), request.get(2), request.get(3));
+			
+			//Based on server response offer correct corresponding options to user
+			messageType = byteArrayToInt(response.get(0));
+			subMessage = byteArrayToInt(response.get(1));
+			
+		}while(messageType != MessageType.LOGOFF.getMessageType() || (subMessage != 0 && subMessage != 1 && subMessage !=2));
+		System.out.println(byteArrayToString(response.get(3)));
+	}
+	
+	private static void queryMessages() throws IOException, InterruptedException{
+		int messageType = MessageType.QUERY_MESSAGES.getMessageType();
+		int subMessage = 0;
+		String message = " ";
+		
+		ArrayList<byte[]> request = convertToArrayList(messageType,subMessage,message);
+		ArrayList<byte[]> response = new ArrayList<byte[]>();
+		
+		do{
+			response = sendRequest(request.get(0), request.get(1), request.get(2), request.get(3));
+			
+			messageType = byteArrayToInt(response.get(0));
+			subMessage = byteArrayToInt(response.get(1));
+			
+			System.out.println(byteArrayToString(response.get(3)));
+		
+		} while(subMessage == 1 && messageType == MessageType.QUERY_MESSAGES.getMessageType());
+		
+	}
+
 	/**
 	 * Sends a request to the server and returns the server's response.
 	 * @param messageType
@@ -185,8 +408,9 @@ public class Client {
 	 * @param data
 	 * @return
 	 * @throws IOException
+	 * @throws InterruptedException 
 	 */
-	private static ArrayList<byte[]> sendRequest (byte[] messageType, byte[] subMessage, byte[] size, byte[] data) throws IOException {
+	private static ArrayList<byte[]> sendRequest (byte[] messageType, byte[] subMessage, byte[] size, byte[] data) throws IOException, InterruptedException {
 		byte[] request = concatenateByteArrays(messageType, subMessage, size, data);
 		byte[] totalHeaderBytes = new byte[TOTAL_HEADER_SIZE];
 		byte[] sizeHeader = new byte[HEADER_SIZE];
@@ -215,6 +439,12 @@ public class Client {
 		messageSize = ByteBuffer.wrap(sizeHeader).getInt();
 		
 		//read the payload message from the socket
+//		availableBytes = 0;
+//		while(availableBytes < messageSize){
+//			fromServer = socket.getInputStream();
+//			availableBytes = fromServer.available();
+//			Thread.sleep(10);
+//		}
 		message = new byte[messageSize];
 		fromServer.read(message, 0, messageSize);
 		
@@ -228,26 +458,6 @@ public class Client {
 		serverResponse.add(3, message);
 		
 		return serverResponse;
-	}
-	
-	/**
-	 * Checks for new messages from the server every 5 seconds
-	 */
-	private static class AutoQuery implements Runnable{
-		@Override
-		public void run(){
-			
-			while(true){
-				try {
-					
-					Thread.sleep(5000);
-				} catch (InterruptedException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
-			}
-		}
-		
 	}
 	
 	/**
@@ -300,7 +510,7 @@ public class Client {
 	}
 	
 	/**
-	 * Helper method to store protocal parameters as an array list
+	 * Helper method to store protocol parameters as an array list
 	 * @param messageType
 	 * @param subMessage
 	 * @param message
@@ -322,5 +532,24 @@ public class Client {
 		return list;
 	}
 	
-	
+	/**
+	 * Checks for new messages from the server every 5 seconds
+	 */
+	private static class AutoQuery implements Runnable{
+		@Override
+		public void run(){
+			
+			while(threadFlag){
+				try {
+					queryMessages();
+					Thread.sleep(5000);
+				} catch (InterruptedException | IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			}
+		}
+		
+		
+	}
 }
