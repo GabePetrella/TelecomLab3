@@ -98,7 +98,6 @@ public class Client {
 		
 		request = convertToArrayList(messageType,subMessage,message);
 		response = sendRequest(request.get(0), request.get(1), request.get(2), request.get(3));
-		System.out.println(byteArrayToString(response.get(3)));
 		
 		System.out.println("Exiting, goodbye!");
 		
