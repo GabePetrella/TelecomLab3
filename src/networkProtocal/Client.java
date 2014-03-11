@@ -7,6 +7,7 @@ import java.io.OutputStream;
 import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.LinkedList;
 import java.util.Scanner;
 
 public class Client {
@@ -18,6 +19,7 @@ public class Client {
 	private static final int HEADER_SIZE = 4;
 	static Thread autoQuery;
 	static volatile boolean threadFlag = true;
+	private static LinkedList<String> newUsers = new LinkedList<String>();
 	
 	private enum MessageType {
 		EXIT(0),
@@ -73,8 +75,6 @@ public class Client {
 		
 		if(userSelection == 1){
 			login();
-//			autoQuery = new Thread(new AutoQuery());
-//			autoQuery.start();
 		}
 		else if (userSelection == 2){
 			createUser();
@@ -155,6 +155,8 @@ public class Client {
 		System.out.println(byteArrayToString(response.get(3)));
 		
 		if(subMessage == 0){
+			//adds user to the list of new users so a data store can be created on first login
+			newUsers.addLast(username);
 			initialMenu();
 		}
 		else if(subMessage == 2){
@@ -201,11 +203,19 @@ public class Client {
 			subMessage = byteArrayToInt(response.get(1));
 		}while(messageType != MessageType.LOGIN.getMessageType() || (subMessage != 0 && subMessage != 1 && subMessage != 2 && subMessage != 3));
 		
-		System.out.println(byteArrayToString(response.get(3)));
+		
 		
 		//need to start thread before going to alreadyLoggedIn()
 		if (subMessage == 0){
-			createStore();
+			System.out.println(byteArrayToString(response.get(3)));
+			//check if first time user logs in, creates store and removes from new users list
+			if(newUsers.contains(username)){
+				createStore();
+				newUsers.remove(username);
+			}
+			threadFlag = true;
+			autoQuery = new Thread(new AutoQuery());
+			autoQuery.start();
 			alreadyLoggedIn();
 		}
 		else if (subMessage == 1){
@@ -274,14 +284,19 @@ public class Client {
 				break;
 			case 3:
 				deleteAccount();
+				threadFlag = false;
 				Thread.sleep(2000);
 				initialMenu();
 				break;
 			case 4:
 				logoff();
+				threadFlag = false;
+				Thread.sleep(2000);
 				initialMenu();
 				break;
 			case 5:
+				threadFlag = false;
+				Thread.sleep(2000);
 				exit();
 				break;
 			default:
@@ -316,7 +331,6 @@ public class Client {
 		
 		
 		data = username + "," + message;
-		System.out.println(data);
 		
 		ArrayList<byte[]> request = convertToArrayList(messageType,subMessage,data);
 		ArrayList<byte[]> response = new ArrayList<byte[]>();
@@ -376,7 +390,7 @@ public class Client {
 			messageType = byteArrayToInt(response.get(0));
 			subMessage = byteArrayToInt(response.get(1));
 			
-		}while(messageType != MessageType.LOGOFF.getMessageType() || (subMessage != 0 && subMessage != 1 && subMessage !=2));
+		}while(messageType != MessageType.LOGOFF.getMessageType() || (subMessage != 0 && subMessage != 1));
 		System.out.println(byteArrayToString(response.get(3)));
 	}
 	
@@ -384,9 +398,11 @@ public class Client {
 		int messageType = MessageType.QUERY_MESSAGES.getMessageType();
 		int subMessage = 0;
 		String message = " ";
-		
+		int count =0;
 		ArrayList<byte[]> request = convertToArrayList(messageType,subMessage,message);
 		ArrayList<byte[]> response = new ArrayList<byte[]>();
+		
+		System.out.println("Checking for new messages!");
 		
 		do{
 			response = sendRequest(request.get(0), request.get(1), request.get(2), request.get(3));
@@ -394,9 +410,16 @@ public class Client {
 			messageType = byteArrayToInt(response.get(0));
 			subMessage = byteArrayToInt(response.get(1));
 			
-			System.out.println(byteArrayToString(response.get(3)));
+			if(subMessage==1){
+				System.out.println(byteArrayToString(response.get(3)));
+				count++;
+			}
 		
 		} while(subMessage == 1 && messageType == MessageType.QUERY_MESSAGES.getMessageType());
+		
+		if(count == 0){
+			System.out.println(byteArrayToString(response.get(3)));
+		}
 		
 	}
 
@@ -538,10 +561,28 @@ public class Client {
 	private static class AutoQuery implements Runnable{
 		@Override
 		public void run(){
-			
+			int messageType, subMessage;
+			String message;
+			ArrayList<byte[]> request, response;
 			while(threadFlag){
 				try {
-					queryMessages();
+					messageType = MessageType.QUERY_MESSAGES.getMessageType();
+					subMessage = 0;
+					message = " ";
+					request = convertToArrayList(messageType,subMessage,message);
+					
+					do{
+						response = sendRequest(request.get(0), request.get(1), request.get(2), request.get(3));
+						
+						messageType = byteArrayToInt(response.get(0));
+						subMessage = byteArrayToInt(response.get(1));
+						
+						if(subMessage==1){
+							System.out.println(byteArrayToString(response.get(3)));
+						}
+					
+					} while(subMessage == 1 && messageType == MessageType.QUERY_MESSAGES.getMessageType());
+					
 					Thread.sleep(5000);
 				} catch (InterruptedException | IOException e) {
 					// TODO Auto-generated catch block
