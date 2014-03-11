@@ -342,6 +342,10 @@ public class Client {
 		}while(messageType != MessageType.SEND_MESSAGE.getMessageType() || (subMessage != 0 && subMessage != 1 && subMessage != 2 && subMessage != 3 && subMessage != 4));
 		
 		System.out.println(byteArrayToString(response.get(3)));
+		if(subMessage == 3){
+			threadFlag = false;
+			initialMenu();
+		}
 	}
 	
 	/**
@@ -393,7 +397,7 @@ public class Client {
 	
 	private static void queryMessages() throws IOException, InterruptedException{
 		int messageType = MessageType.QUERY_MESSAGES.getMessageType();
-		int subMessage = 0;
+		int subMessage = 1;
 		String message = " ";
 		int count =0;
 		ArrayList<byte[]> request = convertToArrayList(messageType,subMessage,message);
@@ -402,17 +406,17 @@ public class Client {
 		System.out.println("Checking for new messages!");
 		
 		do{
-			response = sendRequest(request.get(0), request.get(1), request.get(2), request.get(3));
-			
-			messageType = byteArrayToInt(response.get(0));
-			subMessage = byteArrayToInt(response.get(1));
-			
-			if(subMessage==1 && messageType==MessageType.QUERY_MESSAGES.getMessageType()){
+			while(subMessage==1 && messageType==MessageType.QUERY_MESSAGES.getMessageType()){
+				response = sendRequest(request.get(0), request.get(1), request.get(2), request.get(3));
+				
+				messageType = byteArrayToInt(response.get(0));
+				subMessage = byteArrayToInt(response.get(1));
+				
 				System.out.println(byteArrayToString(response.get(3)));
 				count++;
 			}
 		
-		} while(subMessage == 1 && messageType == MessageType.QUERY_MESSAGES.getMessageType());
+		} while(messageType != MessageType.QUERY_MESSAGES.getMessageType() || (subMessage != 0 && subMessage!=1));
 		
 		if(count == 0){
 			System.out.println(byteArrayToString(response.get(3)));
@@ -563,21 +567,22 @@ public class Client {
 			while(threadFlag){
 				try {
 					messageType = MessageType.QUERY_MESSAGES.getMessageType();
-					subMessage = 0;
+					subMessage = 1;
 					message = " ";
 					request = convertToArrayList(messageType,subMessage,message);
 					
 					do{
-						response = sendRequest(request.get(0), request.get(1), request.get(2), request.get(3));
-						
-						messageType = byteArrayToInt(response.get(0));
-						subMessage = byteArrayToInt(response.get(1));
-						
-						if(subMessage==1 && messageType == MessageType.QUERY_MESSAGES.getMessageType()){
-							System.out.println(byteArrayToString(response.get(3)));
+						while(subMessage==1 && messageType==MessageType.QUERY_MESSAGES.getMessageType()){
+							response = sendRequest(request.get(0), request.get(1), request.get(2), request.get(3));
+							
+							messageType = byteArrayToInt(response.get(0));
+							subMessage = byteArrayToInt(response.get(1));
+							if (subMessage==1 && messageType==MessageType.QUERY_MESSAGES.getMessageType()){
+								System.out.println(byteArrayToString(response.get(3)));
+							}
 						}
 					
-					} while(subMessage == 1 && messageType == MessageType.QUERY_MESSAGES.getMessageType());
+					} while(messageType != MessageType.QUERY_MESSAGES.getMessageType() || (subMessage != 0 && subMessage!=1));
 					
 					Thread.sleep(3000);
 				} catch (InterruptedException | IOException e) {
