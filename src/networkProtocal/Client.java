@@ -203,11 +203,10 @@ public class Client {
 			subMessage = byteArrayToInt(response.get(1));
 		}while(messageType != MessageType.LOGIN.getMessageType() || (subMessage != 0 && subMessage != 1 && subMessage != 2 && subMessage != 3));
 		
-		
+		System.out.println(byteArrayToString(response.get(3)));
 		
 		//need to start thread before going to alreadyLoggedIn()
 		if (subMessage == 0){
-			System.out.println(byteArrayToString(response.get(3)));
 			//check if first time user logs in, creates store and removes from new users list
 			if(newUsers.contains(username)){
 				createStore();
@@ -277,6 +276,8 @@ public class Client {
 		switch(userSelection){
 			case 1:
 				sendMessage();
+				Thread.sleep(500);
+				alreadyLoggedIn();
 				break;
 			case 2:
 				queryMessages();
@@ -285,18 +286,18 @@ public class Client {
 			case 3:
 				deleteAccount();
 				threadFlag = false;
-				Thread.sleep(2000);
+				Thread.sleep(500);
 				initialMenu();
 				break;
 			case 4:
 				logoff();
 				threadFlag = false;
-				Thread.sleep(2000);
+				Thread.sleep(500);
 				initialMenu();
 				break;
 			case 5:
 				threadFlag = false;
-				Thread.sleep(2000);
+				Thread.sleep(500);
 				exit();
 				break;
 			default:
@@ -328,8 +329,6 @@ public class Client {
 		System.out.print("Please enter the message: ");
 		
 		message = cli.nextLine().toString();
-		
-		
 		data = username + "," + message;
 		
 		ArrayList<byte[]> request = convertToArrayList(messageType,subMessage,data);
@@ -340,11 +339,9 @@ public class Client {
 			
 			messageType = byteArrayToInt(response.get(0));
 			subMessage = byteArrayToInt(response.get(1));
-		}while(messageType != MessageType.SEND_MESSAGE.getMessageType());
+		}while(messageType != MessageType.SEND_MESSAGE.getMessageType() || (subMessage != 0 && subMessage != 1 && subMessage != 2 && subMessage != 3 && subMessage != 4));
 		
 		System.out.println(byteArrayToString(response.get(3)));
-		Thread.sleep(2000);
-		alreadyLoggedIn();
 	}
 	
 	/**
@@ -386,7 +383,7 @@ public class Client {
 		do {
 			response = sendRequest(request.get(0), request.get(1), request.get(2), request.get(3));
 			
-			//Based on server response offer correct corresponding options to user
+			
 			messageType = byteArrayToInt(response.get(0));
 			subMessage = byteArrayToInt(response.get(1));
 			
@@ -410,7 +407,7 @@ public class Client {
 			messageType = byteArrayToInt(response.get(0));
 			subMessage = byteArrayToInt(response.get(1));
 			
-			if(subMessage==1){
+			if(subMessage==1 && messageType==MessageType.QUERY_MESSAGES.getMessageType()){
 				System.out.println(byteArrayToString(response.get(3)));
 				count++;
 			}
@@ -437,7 +434,7 @@ public class Client {
 		byte[] request = concatenateByteArrays(messageType, subMessage, size, data);
 		byte[] totalHeaderBytes = new byte[TOTAL_HEADER_SIZE];
 		byte[] sizeHeader = new byte[HEADER_SIZE];
-		byte[] message, sub;
+		byte[] message, sub, mType;
 		
 		int availableBytes;
 		int messageSize;
@@ -462,20 +459,19 @@ public class Client {
 		messageSize = ByteBuffer.wrap(sizeHeader).getInt();
 		
 		//read the payload message from the socket
-//		availableBytes = 0;
-//		while(availableBytes < messageSize){
-//			fromServer = socket.getInputStream();
-//			availableBytes = fromServer.available();
-//			Thread.sleep(10);
-//		}
 		message = new byte[messageSize];
 		fromServer.read(message, 0, messageSize);
 		
+		//store the messageType from the received message into byte array
+		mType = new byte[HEADER_SIZE];
+		System.arraycopy(totalHeaderBytes, 0, mType, 0, HEADER_SIZE);
+		
+		//store the subMessage into a byte array
 		sub = new byte[HEADER_SIZE];
 		System.arraycopy(totalHeaderBytes, HEADER_SIZE, sub, 0, HEADER_SIZE);
 		
 		//store each of the headers and the message as a separate component of an arrayList<byte[]>
-		serverResponse.add(0, messageType);
+		serverResponse.add(0, mType);
 		serverResponse.add(1, sub);
 		serverResponse.add(2, sizeHeader);
 		serverResponse.add(3, message);
@@ -577,13 +573,13 @@ public class Client {
 						messageType = byteArrayToInt(response.get(0));
 						subMessage = byteArrayToInt(response.get(1));
 						
-						if(subMessage==1){
+						if(subMessage==1 && messageType == MessageType.QUERY_MESSAGES.getMessageType()){
 							System.out.println(byteArrayToString(response.get(3)));
 						}
 					
 					} while(subMessage == 1 && messageType == MessageType.QUERY_MESSAGES.getMessageType());
 					
-					Thread.sleep(5000);
+					Thread.sleep(3000);
 				} catch (InterruptedException | IOException e) {
 					// TODO Auto-generated catch block
 					e.printStackTrace();
